@@ -7,6 +7,7 @@ import mplfinance as mpl
 import pandas as pd
 from loguru import logger
 from matplotlib import pyplot as plt
+import matplotlib.dates as mdates
 
 ##############################
 # Load environment variables #
@@ -44,8 +45,8 @@ class Source(ABC):
         # df.index = pd.to_datetime(df.index)
 
         fig, ax = plt.subplots()
-        # df.plot(ax=ax, kind="line", y="Close", color='#003366')
-        mpl.plot(df, type="line", style="sas", ax=ax, linecolor="#203d74")
+        df.plot(ax=ax, kind="line", y="Close", color='#003366')
+        # mpl.plot(df, type="line", style="sas", ax=ax, linecolor="#003366")
 
         ax.set_title(
             f"\nTICKER : {cls.element}"
@@ -55,6 +56,15 @@ class Source(ABC):
             fontsize="medium",
         )
         ax.set_ylabel("Closing Price")
+        ax.yaxis.set_label_position("right")
+        ax.yaxis.tick_right()
+
+        locator = mdates.AutoDateLocator()
+        formatter = mdates.ConciseDateFormatter(locator)
+
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(formatter)
+
         ax.grid()
         plt.tight_layout()
 
