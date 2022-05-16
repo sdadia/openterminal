@@ -9,6 +9,7 @@ from alpha_vantage.cryptocurrencies import CryptoCurrencies
 from alpha_vantage.timeseries import TimeSeries
 import rich_dataframe
 
+
 from common import session, console, searchStock
 
 ########################
