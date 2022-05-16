@@ -2,9 +2,11 @@ import datetime
 import os
 from typing import Union, Dict, Literal
 
+import ciso8601
 import pandas as pd
 import requests
 from loguru import logger
+from matplotlib import pyplot as plt
 
 from sources import Source
 
@@ -128,3 +130,9 @@ class AlphaVantage(Source):
             "MatchScore",
         ]
         return df
+
+
+# ss = AlphaVantage(stockName='GOOG')
+# df = ss.loadDaily(startDate=ciso8601.parse_datetime('2020-01-01'))
+# ss.plotLine(df)
+# plt.show()
