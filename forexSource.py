@@ -45,11 +45,13 @@ class ForexSource(Source):
         ax.yaxis.set_label_position("right")
         ax.yaxis.tick_right()
 
-        # set date format
-        # locator = mdates.AutoDateLocator()
-        # formatter = mdates.ConciseDateFormatter(locator)
-        # ax.xaxis.set_major_locator(locator)
-        # ax.xaxis.set_major_formatter(formatter)
+        if df.shape[0] > 200:
+
+            # set date format
+            locator = mdates.AutoDateLocator()
+            formatter = mdates.ConciseDateFormatter(locator)
+            ax.xaxis.set_major_locator(locator)
+            ax.xaxis.set_major_formatter(formatter)
 
         # show legend
         plt.legend()
@@ -61,9 +63,9 @@ class ForexSource(Source):
 
 class AlphaVantageForexSource(ForexSource):
     physical_currency_df: pd.DataFrame = pd.read_csv('./av_physical_currency_list.csv')
-    physical_currency_codes: List[str] = pd.read_csv('./av_physical_currency_list.csv')['currency code'].tolist()
+    physical_currency_codes: List[str] = physical_currency_df['currency code'].tolist()
     physical_currency_codes = [x.upper() for x in physical_currency_codes]
-    physical_currency_name: List[str] = pd.read_csv('./av_physical_currency_list.csv')['currency name'].tolist()
+    physical_currency_name: List[str] = physical_currency_df['currency name'].tolist()
     physical_currency_name = [x.upper() for x in physical_currency_name]
 
     apiURL: str = "https://www.alphavantage.co/query?"
