@@ -1,5 +1,6 @@
 import datetime
 import os
+import sys
 from typing import Union, Dict, Literal, List, Optional
 import difflib
 
@@ -12,25 +13,27 @@ from matplotlib import pyplot as plt
 from sources import Source
 import mplfinance as mpl
 import matplotlib.dates as mdates
+from adjustText import adjust_text
 
 
 class ForexSource(Source):
     from_symbol: str = None
     to_symbol: str = None
 
-    def plotLine(cls, df: pd.DataFrame):
+    def plotLine(cls, df: pd.DataFrame, plotGlobalEvents: bool = True):
         # Check if df is not empty
         assert not (df.empty), Exception("No data available for plotting")
         assert "Close" in df.columns, Exception("'Close' column not found in df")
 
-        # df.index = pd.to_datetime(df.index)
-
         fig, ax = plt.subplots()
-
+        # Plot the price
         df.plot(ax=ax, kind="line", y="Close", color='#003366')
-        # mpl.plot(df, type="line", style="sas", ax=ax, linecolor="#003366")
-        # Add labels to the plot
 
+        # Plot the global events
+        if plotGlobalEvents:
+            fig, ax = cls.plotGlobalEvents(df, fig, ax)
+
+        # set title
         ax.set_title(
             f"\nFOREX : {cls.from_symbol} to {cls.to_symbol}"
             f"\n{df.index[0]} to {df.index[-1]}"
@@ -42,12 +45,13 @@ class ForexSource(Source):
         ax.yaxis.set_label_position("right")
         ax.yaxis.tick_right()
 
-        locator = mdates.AutoDateLocator()
-        formatter = mdates.ConciseDateFormatter(locator)
+        # set date format
+        # locator = mdates.AutoDateLocator()
+        # formatter = mdates.ConciseDateFormatter(locator)
+        # ax.xaxis.set_major_locator(locator)
+        # ax.xaxis.set_major_formatter(formatter)
 
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(formatter)
-
+        # show legend
         plt.legend()
         ax.grid()
         plt.tight_layout()
