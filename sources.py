@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Union, Dict
 
+import ciso8601
 import dotenv
 import mplfinance as mpl
 import pandas as pd
+from adjustText import adjust_text
 from loguru import logger
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
@@ -92,4 +94,42 @@ class Source(ABC):
 
         return fig, ax
 
+    def plotGlobalEvents(self, df, fig, ax):
 
+        globalEvents = [
+            {'eventName': 'Ukraine war',
+             'eventDate': '2022-02-24'},
+            {'eventName': 'US sanctions',
+             'eventDate': '2022-03-15'},
+            {'eventName': 'Russian gas in Rubles',
+             'eventDate': '2022-03-22'},
+        ]
+        globalEventsDF = pd.DataFrame(globalEvents)
+        globalEventsDF.eventDate = pd.to_datetime(globalEventsDF.eventDate)
+        globalEventsDF.set_index('eventDate', inplace=True)
+
+        mergedEventsDF = pd.merge(left=globalEventsDF, right=df, left_index=True, right_index=True, how='outer')
+        mergedEventsDF = mergedEventsDF[(mergedEventsDF.index >= df.index.min()) & (mergedEventsDF.index <= df.index.max())]
+        if mergedEventsDF.empty:
+            return fig, ax
+        mergedEventsDF.interpolate(method='linear', inplace=True, limit_direction='both')
+        # Filter rows where we have events
+        mergedEventsDF = mergedEventsDF[mergedEventsDF.eventName.notnull()]
+
+        print(mergedEventsDF.info())
+        print(mergedEventsDF.head(10))
+
+        ax.scatter(x=mergedEventsDF.index, y=mergedEventsDF.Close, marker='o')
+
+        texts = []
+        for index, row in mergedEventsDF.iterrows():
+            texts.append(ax.text(index, row['Close'], row['eventName'])
+                         )
+        adjust_text(texts, arrowprops=dict(arrowstyle='->', color='blue'), ax=ax,
+                    expand_points=(2,2),
+                    # expand_text=(3,3),
+                    expand_objects=(3,6),
+                    expand_align=(5,5)
+                    )
+
+        return fig, ax
