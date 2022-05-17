@@ -63,11 +63,13 @@ class Source(ABC):
         ax.yaxis.set_label_position("right")
         ax.yaxis.tick_right()
 
-        # locator = mdates.AutoDateLocator()
-        # formatter = mdates.ConciseDateFormatter(locator)
-        #
-        # ax.xaxis.set_major_locator(locator)
-        # ax.xaxis.set_major_formatter(formatter)
+        # If more than 200 rows in the dataframe use concise datetime format
+        if df.shape[0] > 200:
+            # set date format
+            locator = mdates.AutoDateLocator()
+            formatter = mdates.ConciseDateFormatter(locator)
+            ax.xaxis.set_major_locator(locator)
+            ax.xaxis.set_major_formatter(formatter)
 
         plt.legend()
         ax.grid()
