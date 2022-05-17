@@ -39,15 +39,17 @@ class Source(ABC):
     def checkSymbolExists(self, element: str) -> bool:
         pass
 
-    def plotLine(cls, df: pd.DataFrame):
+    def plotLine(cls, df: pd.DataFrame, plotGlobalEvents: bool = True):
         # Check if df is not empty
         assert not (df.empty), Exception("No data available for plotting")
         assert "Close" in df.columns, Exception("'Close' column not found in df")
 
-        # df.index = pd.to_datetime(df.index)
-
         fig, ax = plt.subplots()
         df.plot(ax=ax, kind="line", y="Close", color="#003366")
+        # Plot the global events
+        if plotGlobalEvents:
+            fig, ax = cls.plotGlobalEvents(df, fig, ax)
+
         # mpl.plot(df, type="line", style="sas", ax=ax, linecolor="#003366")
 
         ax.set_title(
@@ -61,12 +63,13 @@ class Source(ABC):
         ax.yaxis.set_label_position("right")
         ax.yaxis.tick_right()
 
-        locator = mdates.AutoDateLocator()
-        formatter = mdates.ConciseDateFormatter(locator)
+        # locator = mdates.AutoDateLocator()
+        # formatter = mdates.ConciseDateFormatter(locator)
+        #
+        # ax.xaxis.set_major_locator(locator)
+        # ax.xaxis.set_major_formatter(formatter)
 
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(formatter)
-
+        plt.legend()
         ax.grid()
         plt.tight_layout()
 
@@ -100,6 +103,7 @@ class Source(ABC):
             {"eventName": "Ukraine war", "eventDate": "2022-02-24"},
             {"eventName": "US sanctions", "eventDate": "2022-03-15"},
             {"eventName": "Russian gas in Rubles", "eventDate": "2022-03-22"},
+            {"eventName": "India ban wheat export", "eventDate": "2022-05-14"},
         ]
         globalEventsDF = pd.DataFrame(globalEvents)
         globalEventsDF.eventDate = pd.to_datetime(globalEventsDF.eventDate)
@@ -127,7 +131,10 @@ class Source(ABC):
         print(mergedEventsDF.info())
         print(mergedEventsDF.head(10))
 
-        ax.scatter(x=mergedEventsDF.index, y=mergedEventsDF.Close, marker="o")
+        if mergedEventsDF.shape[0] == 1:
+            ax.scatter(x=mergedEventsDF.index.tolist(), y=mergedEventsDF.Close.tolist(), marker="o", color='r')
+        else:
+            ax.scatter(x=mergedEventsDF.index, y=mergedEventsDF.Close.tolist(), marker="o", color='r')
 
         texts = []
         for index, row in mergedEventsDF.iterrows():
