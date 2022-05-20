@@ -1,190 +1,187 @@
-from abc import ABC, abstractmethod
-from typing import Union, List
+import argparse
+import datetime
+import difflib
+import os
+from typing import Dict, Literal, List, Optional
 
-import dotenv
+import ciso8601
 import matplotlib.dates as mdates
-import mplfinance as mpl
 import pandas as pd
-from adjustText import adjust_text
+import requests
 from loguru import logger
 from matplotlib import pyplot as plt
-from common import console
+from rich_dataframe import rich_dataframe
 
-##############################
-# Load environment variables #
-##############################
-console.log("Loading environment")
-dotenv.load_dotenv()
+from common import session, console
+from sources import DataSourceBase
 
 
-###################################
-# Base class for each data source #
-###################################
-class DataSourceBase(ABC):
-    element: str = str
-    apiKeyName: Union[str, None] = None
-    apiKey: Union[str, None] = None
-    apiURL: Union[str, None] = None
+class ForexDataDataSourceBaseBase(DataSourceBase):
+    from_symbol: str = None
+    to_symbol: str = None
 
-    @abstractmethod
-    def loadDaily(self) -> pd.DataFrame:
-        pass
-
-    @abstractmethod
-    def find(cls) -> pd.DataFrame:
-        pass
-
-    @abstractmethod
-    def checkSymbolExists(self, element: str) -> bool:
-        pass
-
-    def plotLine(cls, df: pd.DataFrame, plotGlobalEvents: bool = True):
+    def plotLine(cls, df: pd.DataFrame, plotGlobalEvents: bool = True, adjust=True):
         # Check if df is not empty
         assert not (df.empty), Exception("No data available for plotting")
         assert "Close" in df.columns, Exception("'Close' column not found in df")
 
         fig, ax = plt.subplots()
+        # Plot the price
         df.plot(ax=ax, kind="line", y="Close", color="#003366")
+
         # Plot the global events
         if plotGlobalEvents:
-            fig, ax = cls.plotGlobalEvents(df, fig, ax)
+            fig, ax = cls.plotGlobalEvents(df, fig, ax, adjust=adjust)
 
+        # set title
         ax.set_title(
-            f"\nTICKER : {cls.element}"
+            f"\nFOREX : {cls.from_symbol} to {cls.to_symbol}"
             f"\n{df.index[0]} to {df.index[-1]}"
             f"\nMin: {df['Close'].min()}, Max: {df['Close'].max()}, Last: {df['Close'].tolist()[-1]}",
             loc="left",
             fontsize="medium",
         )
-        ax.set_ylabel("Closing Price", fontweight="bold")
+        ax.set_ylabel("Closing Price")
         ax.yaxis.set_label_position("right")
-        # ax.yaxis.set_label_loc('top')
         ax.yaxis.tick_right()
 
-        # If more than 200 rows in the dataframe use concise datetime format
-        if df.shape[0] > 200 and df.shape[0] < 900:
+        if df.shape[0] > 200:
             # set date format
-            locator = mdates.MonthLocator()  # every month
-        else:
             locator = mdates.AutoDateLocator()
+            formatter = mdates.ConciseDateFormatter(locator)
+            ax.xaxis.set_major_locator(locator)
+            ax.xaxis.set_major_formatter(formatter)
 
-        formatter = mdates.ConciseDateFormatter(locator)
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(formatter)
-        ax.xaxis.grid(True, which="minor")
-
-        plt.legend()
+        # show legend
+        ax.legend(bbox_to_anchor=(1.04, 1), borderaxespad=1)
         ax.grid()
         # plt.tight_layout()
 
         return fig, ax
 
-    def plotCandle(cls, df: pd.DataFrame, volume=True):
-        # Check if df is not empty
-        assert not (df.empty), Exception("No data available for plotting")
 
-        df.index = pd.to_datetime(df.index)
+class AlphaVantageForexSource(ForexDataDataSourceBaseBase):
+    physical_currency_df: pd.DataFrame = pd.read_csv("./av_physical_currency_list.csv")
+    physical_currency_codes: List[str] = physical_currency_df["currency code"].tolist()
+    physical_currency_codes = [x.upper() for x in physical_currency_codes]
+    physical_currency_name: List[str] = physical_currency_df["currency name"].tolist()
+    physical_currency_name = [x.upper() for x in physical_currency_name]
 
-        fig, ax = plt.subplots()
-        mpl.plot(df, type="candle", style="sas", ax=ax)
+    apiURL: str = "https://www.alphavantage.co/query?"
+    apiKeyName: str = "ALPHA_VANTAGE_API_KEY"
+    apiKey: str = None
+    outputSize: Literal["full", "compact"] = "full"
+    isValidElement: bool = False
 
-        ax.set_title(
-            f"\nTICKER : {cls.element}"
-            f"\n{df.index[0]} to {df.index[-1]}"
-            f"\nMin: {df['Close'].min()}, Max: {df['Close'].max()}, Last: {df['Close'].tolist()[-1]}",
-            loc="left",
-            fontsize="medium",
-        )
-        ax.grid()
-
-        plt.tight_layout()
-
-        return fig, ax
-
-    def plotGlobalEvents(self, df, fig, ax, adjust=True):
-
-        globalEvents = [
-            {"eventName": "Ukraine war", "eventDate": "2022-02-24"},
-            {"eventName": "US sanctions", "eventDate": "2022-03-15"},
-            {"eventName": "Russian gas in Rubles", "eventDate": "2022-03-22"},
-            {"eventName": "India ban wheat export", "eventDate": "2022-05-14"},
-            {"eventName": "Covid started", "eventDate": "2019-12-31"},
-            {"eventName": "Coinbase IPO", "eventDate": "2021-04-14"},
-            {"eventName": "USDC Feb GT report", "eventDate": "2021-04-27"},
-            {"eventName": "Coinbase convertible bond", "eventDate": "2021-05-17"},
-            {"eventName": "Crypto Crash", "eventDate": "2021-05-19"},
-            {"eventName": "UST Terra crash", "eventDate": "2022-05-13"},
-            {"eventName": "NFLX price inc", "eventDate": "2022-04-19"},
-            {"eventName": "Russia stop gas to Finland", "eventDate": "2022-05-20"},
-        ]
-        globalEventsDF = pd.DataFrame(globalEvents)
-        globalEventsDF.eventDate = pd.to_datetime(globalEventsDF.eventDate)
-        globalEventsDF.set_index("eventDate", inplace=True)
-        globalEventsDF.sort_index(inplace=True)
-
-        mergedEventsDF = pd.merge(
-            left=globalEventsDF,
-            right=df,
-            left_index=True,
-            right_index=True,
-            how="outer",
-        )
-        mergedEventsDF = mergedEventsDF[
-            (mergedEventsDF.index >= df.index.min())
-            & (mergedEventsDF.index <= df.index.max())
-        ]
-        if mergedEventsDF.empty:
-            return fig, ax
-        mergedEventsDF.interpolate(
-            method="linear", inplace=True, limit_direction="both"
-        )
-        # Filter rows where we have events
-        mergedEventsDF = mergedEventsDF[mergedEventsDF.eventName.notnull()]
-
-        if mergedEventsDF.shape[0] == 1:
-            ax.scatter(
-                x=mergedEventsDF.index.tolist(),
-                y=mergedEventsDF.Close.tolist(),
-                marker="o",
-                color="r",
+    def __init__(self, fromCurrency: str, toCurrency: str):
+        # check if API key is present in environment variable or not
+        if not os.environ.get(self.apiKeyName):
+            raise Exception(
+                f"{self.apiKeyName} not found in .env file. Set the ALPHA_VANTAGE_API_KEY in .env file"
             )
+        self.apiKey: str = os.environ.get(
+            self.apiKeyName, "demo"
+        )  # get api key name from environment
+
+        assert self.checkSymbolExists(fromCurrency), Exception(
+            f"{fromCurrency} not found in valid currency"
+        )
+        assert self.checkSymbolExists(toCurrency), Exception(
+            f"{toCurrency} not found in valid currency"
+        )
+
+        self.from_symbol = fromCurrency.upper()
+        self.to_symbol = toCurrency.upper()
+
+        self.element = f"{self.from_symbol} / {self.to_symbol}"
+
+        self.isValidElement = True
+
+    def loadDaily(
+        self,
+        startDate: datetime.date = datetime.datetime.today()
+        - datetime.timedelta(days=366),
+        endDate: datetime.date = datetime.datetime.today(),
+    ) -> pd.DataFrame:
+        """
+        Function returns the daily OHLC data
+        :param startDate:
+        :param endDate:
+        :return:
+        """
+        assert self.isValidElement, Exception("Select valid symbol")
+        assert startDate < endDate, Exception("Start date should be less than end date")
+
+        # function name and symbol name
+        functionName: str = "FX_DAILY"
+
+        url = f"{self.apiURL}function={functionName}&from_symbol={self.from_symbol}&to_symbol={self.to_symbol}&outputsize={self.outputSize}&apikey={self.apiKey}"
+        logger.debug(f"URL for daily FX data is : {url}")
+        r = requests.get(url)
+        data: Dict = r.json()
+
+        if "Error Message" in data:
+            logger.exception(
+                f"Error getting daily stock prices for : {self.element} from ALPHA_VANTAGE. Error is : {data['Error Message']}"
+            )
+            return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
         else:
-            ax.scatter(
-                x=mergedEventsDF.index,
-                y=mergedEventsDF.Close.tolist(),
-                marker="o",
-                color="r",
+            # load data in dictionary
+            df = pd.DataFrame.from_dict(data["Time Series FX (Daily)"], orient="index")
+            # rename columns and sort data
+            df.columns = ["Open", "High", "Low", "Close"]
+            for column in df.columns:
+                df[column] = df[column].astype(float)
+            df.sort_index(inplace=True)
+
+            # convert index to datetime
+            df.index = pd.to_datetime(df.index)
+
+            # filter data
+            df = df[(df.index >= str(startDate)) & (df.index <= str(endDate))]
+            # Convert to datetime
+
+            self.df = df
+            return df
+
+    def checkSymbolExists(self, currencyString: str) -> bool:
+        return currencyString.upper() in self.physical_currency_codes
+
+    @classmethod
+    def find(cls, currencyToSearch: str) -> pd.DataFrame:
+        currencyToSearch = currencyToSearch.upper()
+        indexToDisplay: List[Optional[int]] = []
+        for index, i in enumerate(cls.physical_currency_codes):
+            print(i, currencyToSearch)
+            if difflib.SequenceMatcher(None, i, currencyToSearch).ratio() > 0.7:
+                indexToDisplay.append(index)
+
+        indexToDisplay = list(set(indexToDisplay))
+        if len(indexToDisplay) > 0:
+            topMatches: pd.DataFrame = cls.physical_currency_df.iloc[indexToDisplay]
+        else:
+            topMatches: pd.DataFrame = pd.DataFrame(
+                columns=["currency code", "currency name"]
             )
 
-        texts = []
-        for index, row in mergedEventsDF.iterrows():
-            texts.append(ax.text(index, row["Close"], row["eventName"]))
-        if adjust:
-            adjust_text(
-                texts,
-                arrowprops=dict(arrowstyle="->", color="blue"),
-                ax=ax,
-                expand_points=(1.2, 1.2),
-                # expand_text=(3,3),
-                # expand_objects=(1.5, 1.5),
-                # expand_align=(1.1, 1.2),
-            )
-
-        return fig, ax
+        return topMatches
 
 
-
-class TerminalLoop:
+class ForexLoop:
+    sourceClassMapping: Dict[str, object] = {"av": AlphaVantageForexSource}
     commands: List[str] = [
-        "forex",
-        "fo"
-        "reset",
-        "r"
+        "load",
+        "find",
+        "fi",
+        "plotLine",
+        "pl",
         "quit",
         "q",
         "help",
         "h",
     ]
+    classToUse = AlphaVantageForexSource
+    classInstance = None
 
     def runLoop(self):
 
@@ -199,8 +196,8 @@ class TerminalLoop:
         forexParser = argparse.ArgumentParser(prog="forex", add_help=True)
         forexParser.add_argument("cmd", choices=self.commands)
 
-        continueTerminalLoop: bool = True
-        while continueTerminalLoop:
+        continueForexLoop: bool = True
+        while continueForexLoop:
             userInput = session.prompt("Forex>> ")
 
             # Parse main command of the list of possible self.commands
@@ -225,7 +222,7 @@ class TerminalLoop:
             ################
             elif forexParserArgs.cmd in ("quit", "q"):
                 console.print("[red]Exiting Forex section")
-                continueTerminalLoop = False
+                continueForexLoop = False
 
             ################
             # Clear screen #

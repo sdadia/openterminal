@@ -1,16 +1,20 @@
 import argparse
 import datetime
 import os
+import subprocess
+import sys
 
+import ciso8601
 import dotenv
 import matplotlib.pyplot as plt
 import pandas as pd
+import rich_dataframe
 from alpha_vantage.cryptocurrencies import CryptoCurrencies
 from alpha_vantage.timeseries import TimeSeries
-import rich_dataframe
 
-
-from common import session, console, searchStock
+from common import session, console
+from forexDataSourceBase import ForexLoop
+from stockSource import AlphaVantageStockDataSourceBase
 
 ########################
 # Load env config file #
@@ -26,16 +30,33 @@ avCryptoClient = CryptoCurrencies(
 )
 
 main_parser = argparse.ArgumentParser(prog="terminal", add_help=True)
-main_parser.add_argument("cmd", choices=["quit", "plot", "find"])
+main_parser.add_argument(
+    "cmd",
+    choices=[
+        "quit",
+        "q",
+        "plotLine",
+        "plotFund",
+        "find",
+        "load",
+        "reset",
+        "r",
+        "cls",
+        "forex",
+    ],
+)
 
 console.print(
-    "Welcome to stock bot. Choose from the following choices.\n" "plot\n" "quit\n" "find\n"
+    "Welcome to stock bot. Choose from the following choices.\n"
+    "plotLine\n"
+    "quit\n"
+    "find\n"
 )
 
 continueLoop: bool = True
 
 while continueLoop:
-    userInput = session.prompt()
+    userInput = session.prompt("Main>> ")
 
     # Parse main command of the list of possible commands
     try:
@@ -45,31 +66,80 @@ while continueLoop:
         continue
 
     # Quit program
-    if mainParserArgs.cmd == "quit":
+    if mainParserArgs.cmd in ("quit", "q"):
         console.print("[red]Quitting. Good bye.")
         continueLoop = False
 
-    # Load program
-    if mainParserArgs.cmd == "plot":
+    if mainParserArgs.cmd == "reset" or mainParserArgs.cmd == "r":
+        console.print("[red]Resetting...")
+        continueLoop = False
+        os.system('cls||clear')
+        subprocess.run(  # nosec
+            f"{sys.executable} terminal.py", shell=True, check=False
+        )
+        console.print("Done")
 
-        ##########################
-        # Create plot parameters #
-        ##########################
-        viewParser = argparse.ArgumentParser(prog="plot")
-        viewParser.add_argument("--ticker", type=str, required=True)
+    if mainParserArgs.cmd == "cls":
+        os.system("cls||clear")
+
+
+    # Load program
+    if mainParserArgs.cmd == "load":
+
+        ##############################
+        # Create load parameters #
+        ##############################
+        loadParser = argparse.ArgumentParser(prog="load")
+        loadParser.add_argument("--ticker", type=str, required=False)
+        # loadParser.add_argument(
+        #     "--startDate",
+        #     type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
+        #     help="The starting date (format YYYY-MM-DD) of the stock",
+        #     default=datetime.datetime.today() - datetime.timedelta(days=365),
+        # )
+        # loadParser.add_argument(
+        #     "--endDate",
+        #     type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
+        #     help="The starting date (format YYYY-MM-DD) of the stock",
+        #     default=datetime.datetime.today(),
+        # )
+        try:
+            (loadParserArgs, largs) = loadParser.parse_known_args(userInput.split())
+        except SystemExit:
+            console.print("[red]Invalid arguemnts")
+            continue
+
+        ###########################
+        # Load data for the stock #
+        ###########################
+
+        try:
+            ss: AlphaVantageStockDataSourceBase = AlphaVantageStockDataSourceBase(
+                stockName=loadParserArgs.ticker
+            )
+        except Exception as error:
+            console.log(error)
+
+    # Load program
+    if mainParserArgs.cmd == "plotLine":
+
+        ##############################
+        # Create plotLine parameters #
+        ##############################
+        viewParser = argparse.ArgumentParser(prog="plotLine")
         viewParser.add_argument(
             "--type", type=str, required=False, default="line", choices=["line", "ohlc"]
         )
         viewParser.add_argument(
             "--startDate",
             type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
-            help="The starting date (format YYYY-MM-DD) of the stock",
+            help="The starting date (format YYYY-MM-DD)",
             default=datetime.datetime.today() - datetime.timedelta(days=365),
         )
         viewParser.add_argument(
             "--endDate",
             type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
-            help="The starting date (format YYYY-MM-DD) of the stock",
+            help="The starting date (format YYYY-MM-DD)",
             default=datetime.datetime.today(),
         )
         try:
@@ -81,44 +151,53 @@ while continueLoop:
         ###########################
         # Load data for the stock #
         ###########################
-        data, meta_data = avStockClient.get_daily(
-            viewParserArgs.ticker, outputsize="full"
-        )
-        # Rename correct column
-        data.columns = [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",
-        ]
-        data.sort_index(inplace=True)
-        # Subset data based on start and end time
-        data = data[
-            (data.index >= viewParserArgs.startDate)
-            & (data.index <= viewParserArgs.endDate)
-        ]
-
-        ##########################
-        # Create different plots #
-        ##########################
-        if viewParserArgs.type == "line":
-            fig, ax = plt.subplots()
-            data.plot(ax=ax, kind="line", y="Close")
-
-            Name = "AssetType"
-            ax.set_title(
-                f""
-                f"\nTICKER : {viewParserArgs.ticker}"
-                f"\n{data.index[0].strftime('%Y-%b-%d')} to {data.index[-1].strftime('%Y-%b-%d')}",
-                loc="left",
-                fontsize="medium",
+        try:
+            df = ss.loadDaily(
+                startDate=ciso8601.parse_datetime(str(viewParserArgs.startDate)),
+                endDate=ciso8601.parse_datetime(str(viewParserArgs.endDate)),
             )
-            ax.set_ylabel("Closing Price")
-            ax.grid()
+            ss.plotLine(df, plotGlobalEvents=True)
+            plt.show()
+        except Exception as err:
+            console.print(f"[red]{err}")
 
-        plt.show(block=False)
-        plt.pause(1)
+    # Load program
+    if mainParserArgs.cmd == "plotFund":
+
+        ##############################
+        # Create plotLine parameters #
+        ##############################
+        viewParser = argparse.ArgumentParser(prog="plotFund")
+        # # viewParser.add_argument(
+        # #     "--type", type=str, required=False, default="line", choices=["line", "ohlc"]
+        # # )
+        # # viewParser.add_argument(
+        # #     "--startDate",
+        # #     type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
+        # #     help="The starting date (format YYYY-MM-DD) of the stock",
+        # #     default=datetime.datetime.today() - datetime.timedelta(days=365),
+        # # )
+        # # viewParser.add_argument(
+        # #     "--endDate",
+        # #     type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
+        # #     help="The starting date (format YYYY-MM-DD) of the stock",
+        # #     default=datetime.datetime.today(),
+        # # )
+        # try:
+        #     (viewParserArgs, largs) = viewParser.parse_known_args(userInput.split())
+        # except SystemExit:
+        #     console.print("[red]Invalid arguemnts")
+        #     continue
+
+        ###########################
+        # Load data for the stock #
+        ###########################
+        try:
+            quaterlyFundamentaData, annualFundamentaData = ss.getFundamentalData()
+            ss.plotFundamentalData(quaterlyFundamentaData)
+            plt.show()
+        except Exception as err:
+            console.print(f"[red]{err}")
 
     # Find program
     if mainParserArgs.cmd == "find":
@@ -139,6 +218,20 @@ while continueLoop:
         # Load data for the stock #
         ###########################
         console.print(f"Results for : {findParserArgs.keyword}")
-        searchResultsDF: pd.DataFrame = searchStock(findParserArgs.keyword)
+        searchResultsDF: pd.DataFrame = AlphaVantageStockDataSourceBase.find(
+            findParserArgs.keyword
+        )
+        # searchResultsDF: pd.DataFrame = searchStock(findParserArgs.keyword)
         rich_dataframe.prettify(searchResultsDF)
         # console.print(searchResultsDF.to_string())
+
+    if mainParserArgs.cmd == "forex":
+        ##############
+        # Get source #
+        ##############
+        forexParser = argparse.ArgumentParser(prog="forex")
+        ForexLoop().runLoop()
+
+    # # TODO : Add Stock loop
+    if continueLoop is False:
+        sys.exit(-1)
