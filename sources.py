@@ -38,7 +38,7 @@ class DataSourceBase(ABC):
     def checkSymbolExists(self, element: str) -> bool:
         pass
 
-    def plotLine(cls, df: pd.DataFrame, plotGlobalEvents: bool = True):
+    def plotLine(cls, df: pd.DataFrame, plotGlobalEvents: bool = True, adjust=True):
         # Check if df is not empty
         assert not (df.empty), Exception("No data available for plotting")
         assert "Close" in df.columns, Exception("'Close' column not found in df")
@@ -158,8 +158,8 @@ class DataSourceBase(ABC):
 
         texts = []
         for index, row in mergedEventsDF.iterrows():
-            texts.append(ax.text(index, row["Close"], row["eventName"]))
-        if adjust:
+            texts.append(ax.text(index, row["Close"], row["eventName"], fontsize=12))
+        if False:
             adjust_text(
                 texts,
                 arrowprops=dict(arrowstyle="->", color="blue"),
@@ -173,14 +173,11 @@ class DataSourceBase(ABC):
         return fig, ax
 
 
-
 class TerminalLoop:
     commands: List[str] = [
         "forex",
-        "fo"
-        "reset",
-        "r"
-        "quit",
+        "fo" "reset",
+        "r" "quit",
         "q",
         "help",
         "h",
@@ -244,7 +241,9 @@ class TerminalLoop:
                 loadParser.add_argument("--fromCurrency", type=str, required=True)
                 loadParser.add_argument("--toCurrency", type=str, required=True)
                 loadParser.add_argument(
-                    "--source", choices=[list(self.sourceClassMapping.keys())], default="av"
+                    "--source",
+                    choices=[list(self.sourceClassMapping.keys())],
+                    default="av",
                 )
 
                 try:
@@ -274,7 +273,7 @@ class TerminalLoop:
                         toCurrency=loadParserArgs.toCurrency,
                     )
                 except Exception as error:
-                    console.print(f'[red]{error}')
+                    console.print(f"[red]{error}")
 
             ################
             # Plot Program #
@@ -306,7 +305,10 @@ class TerminalLoop:
                         default=datetime.datetime.today(),
                     )
                     viewParser.add_argument(
-                        "--adjust", type=int, help="", default=1,
+                        "--adjust",
+                        type=int,
+                        help="",
+                        default=1,
                     )
                     try:
                         (viewParserArgs, largs) = viewParser.parse_known_args(

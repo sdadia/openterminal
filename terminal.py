@@ -9,54 +9,60 @@ import dotenv
 import matplotlib.pyplot as plt
 import pandas as pd
 import rich_dataframe
-from alpha_vantage.cryptocurrencies import CryptoCurrencies
-from alpha_vantage.timeseries import TimeSeries
+from prompt_toolkit.completion import WordCompleter
 
 from common import session, console
 from forexDataSourceBase import ForexLoop
-from stockSource import AlphaVantageStockDataSourceBase
+from stockSource import AlphaVantageStockDataSource, StockLoop
 
 ########################
 # Load env config file #
 ########################
 dotenv.load_dotenv()
 
-# Alpha Vantage Client
-avStockClient = TimeSeries(
-    key=os.getenv("ALPHA_VANTAGE_API_KEY", "demo"), output_format="pandas"
-)
-avCryptoClient = CryptoCurrencies(
-    key=os.getenv("ALPHA_VANTAGE_API_KEY", "demo"), output_format="pandas"
-)
-
 main_parser = argparse.ArgumentParser(prog="terminal", add_help=True)
+commands = [
+        "quit",
+        "q",
+        # "plotLine",
+        # "plotFund",
+        # "find",
+        # "load",
+        "reset",
+        "r",
+        "cls",
+        "forex",
+        "stock",
+    ]
 main_parser.add_argument(
     "cmd",
     choices=[
         "quit",
         "q",
-        "plotLine",
-        "plotFund",
-        "find",
-        "load",
+        # "plotLine",
+        # "plotFund",
+        # "find",
+        # "load",
         "reset",
         "r",
         "cls",
         "forex",
+        "stock",
     ],
 )
-
+os.system("cls||clear")
 console.print(
     "Welcome to stock bot. Choose from the following choices.\n"
-    "plotLine\n"
-    "quit\n"
-    "find\n"
+    f"{commands}"
+
 )
 
 continueLoop: bool = True
 
 while continueLoop:
-    userInput = session.prompt("Main>> ")
+
+
+    userInput = session.prompt("Main>> ", completer=WordCompleter(commands))
 
     # Parse main command of the list of possible commands
     try:
@@ -73,7 +79,7 @@ while continueLoop:
     if mainParserArgs.cmd == "reset" or mainParserArgs.cmd == "r":
         console.print("[red]Resetting...")
         continueLoop = False
-        os.system('cls||clear')
+        os.system("cls||clear")
         subprocess.run(  # nosec
             f"{sys.executable} terminal.py", shell=True, check=False
         )
@@ -81,7 +87,6 @@ while continueLoop:
 
     if mainParserArgs.cmd == "cls":
         os.system("cls||clear")
-
 
     # Load program
     if mainParserArgs.cmd == "load":
@@ -114,7 +119,7 @@ while continueLoop:
         ###########################
 
         try:
-            ss: AlphaVantageStockDataSourceBase = AlphaVantageStockDataSourceBase(
+            ss: AlphaVantageStockDataSource = AlphaVantageStockDataSource(
                 stockName=loadParserArgs.ticker
             )
         except Exception as error:
@@ -218,7 +223,7 @@ while continueLoop:
         # Load data for the stock #
         ###########################
         console.print(f"Results for : {findParserArgs.keyword}")
-        searchResultsDF: pd.DataFrame = AlphaVantageStockDataSourceBase.find(
+        searchResultsDF: pd.DataFrame = AlphaVantageStockDataSource.find(
             findParserArgs.keyword
         )
         # searchResultsDF: pd.DataFrame = searchStock(findParserArgs.keyword)
@@ -231,6 +236,13 @@ while continueLoop:
         ##############
         forexParser = argparse.ArgumentParser(prog="forex")
         ForexLoop().runLoop()
+
+    if mainParserArgs.cmd == "stock":
+        ##############
+        # Get source #
+        ##############
+        forexParser = argparse.ArgumentParser(prog="stock")
+        StockLoop().runLoop()
 
     # # TODO : Add Stock loop
     if continueLoop is False:

@@ -17,9 +17,8 @@ from common import session, console
 from sources import DataSourceBase
 
 
-class ForexDataDataSourceBase(DataSourceBase):
-    from_symbol: str = None
-    to_symbol: str = None
+class CommoditiesDataSourceBase(DataSourceBase):
+    commodityName: str = None
 
     def plotLine(cls, df: pd.DataFrame, plotGlobalEvents: bool = True, adjust=True):
         # Check if df is not empty
@@ -36,7 +35,7 @@ class ForexDataDataSourceBase(DataSourceBase):
 
         # set title
         ax.set_title(
-            f"\nFOREX : {cls.from_symbol} to {cls.to_symbol}"
+            f"\nCOMMODITY : {cls.commodityName} to {cls.to_symbol}"
             f"\n{df.index[0]} to {df.index[-1]}"
             f"\nMin: {df['Close'].min()}, Max: {df['Close'].max()}, Last: {df['Close'].tolist()[-1]}",
             loc="left",
@@ -61,28 +60,24 @@ class ForexDataDataSourceBase(DataSourceBase):
         return fig, ax
 
 
-class AlphaVantageForexSource(ForexDataDataSourceBase):
+class CommoditiesAPICommodtitiesDataSource(CommoditiesDataSourceBase):
     physical_currency_df: pd.DataFrame = pd.read_csv("./av_physical_currency_list.csv")
     physical_currency_codes: List[str] = physical_currency_df["currency code"].tolist()
     physical_currency_codes = [x.upper() for x in physical_currency_codes]
     physical_currency_name: List[str] = physical_currency_df["currency name"].tolist()
     physical_currency_name = [x.upper() for x in physical_currency_name]
 
-    apiURL: str = "https://www.alphavantage.co/query?"
-    apiKeyName: str = "ALPHA_VANTAGE_API_KEY"
+    apiURL: str = "https://commodities-api.com/api/"
+    apiKeyName: str = "COMMODITIES_API_API_KEY"
     apiKey: str = None
-    outputSize: Literal["full", "compact"] = "full"
     isValidElement: bool = False
 
     def __init__(self, fromCurrency: str, toCurrency: str):
         # check if API key is present in environment variable or not
         if not os.environ.get(self.apiKeyName):
             raise Exception(
-                f"{self.apiKeyName} not found in .env file. Set the ALPHA_VANTAGE_API_KEY in .env file"
+                f"{self.apiKeyName} not found in .env file. Set the {self.apiKeyName} in .env file"
             )
-        self.apiKey: str = os.environ.get(
-            self.apiKeyName, "demo"
-        )  # get api key name from environment
 
         assert self.checkSymbolExists(fromCurrency), Exception(
             f"{fromCurrency} not found in valid currency"
@@ -171,7 +166,7 @@ class AlphaVantageForexSource(ForexDataDataSourceBase):
 class ForexLoop:
     sectionName: str = 'forex'
 
-    sourceClassMapping: Dict[str, object] = {"av": AlphaVantageForexSource}
+    sourceClassMapping: Dict[str, object] = {"av": CommoditiesAPICommodtitiesDataSource}
     commands: List[str] = [
         "load",
         "find",
@@ -183,7 +178,7 @@ class ForexLoop:
         "help",
         "h",
     ]
-    classToUse = AlphaVantageForexSource
+    classToUse = CommoditiesAPICommodtitiesDataSource
     classInstance = None
 
     def runLoop(self):
@@ -367,7 +362,7 @@ class ForexLoop:
                 searchResultsDF: pd.DataFrame = self.classToUse.find(
                     findParserArgs.keyword
                 )
-                # searchResultsDF: pd.DataFrame = AlphaVantageForexSource.find(
+                # searchResultsDF: pd.DataFrame = CommoditiesAPICommodtitiesDataSource.find(
                 #     findParserArgs.keyword
                 # )
                 # searchResultsDF: pd.DataFrame = searchStock(findParserArgs.keyword)

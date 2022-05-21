@@ -1,7 +1,9 @@
+import argparse
 import datetime
 import os
-from typing import Union, Dict, Literal
+from typing import Union, Dict, Literal, List
 
+import ciso8601
 import pandas as pd
 import requests
 import rich_dataframe
@@ -10,9 +12,11 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 from sources import DataSourceBase
+from common import console, session
+from prompt_toolkit.completion import WordCompleter
 
 
-class AlphaVantageStockDataSourceBase(DataSourceBase):
+class AlphaVantageStockDataSource(DataSourceBase):
     apiURL: str = "https://www.alphavantage.co/query?"
     apiKeyName: str = "ALPHA_VANTAGE_API_KEY"
     apiKey: str = None
@@ -228,8 +232,202 @@ class AlphaVantageStockDataSourceBase(DataSourceBase):
         return fig, ax
 
 
-# ss = AlphaVantageStockSource(stockName='aram')
-# print(AlphaVantageStockSource.find('SAR'))
-# df = ss.loadDaily(startDate=ciso8601.parse_datetime('2020-01-01'))
-# ss.plotLine(df)
-# plt.show()
+
+class StockLoop:
+    sectionName: str = 'stock'
+
+    sourceClassMapping: Dict[str, object] = {"av": AlphaVantageStockDataSource}
+    commands: List[str] = [
+        "load",
+        "find",
+        "fi",
+        "plotLine",
+        "pl",
+        "quit",
+        "q",
+        "help",
+        "h",
+    ]
+    classToUse = AlphaVantageStockDataSource
+    classInstance = None
+
+    def runLoop(self):
+
+        # Print help message
+        helpMessage = (
+            f"[red]Welcome to {self.sectionName} section. Choose from the following choices."
+            f"\n Choose from the following : [yellow]{self.commands}"
+        )
+        console.print(helpMessage)
+
+        # Parser for parsing the command
+        stockParser = argparse.ArgumentParser(prog="stock", add_help=True)
+        stockParser.add_argument("cmd", choices=self.commands)
+
+        continueStockLoop: bool = True
+        while continueStockLoop:
+            userInput = session.prompt(f"{self.sectionName}>> ", completer=WordCompleter(self.commands))
+
+            # Parse main command of the list of possible self.commands
+            try:
+                (stockParserArgs, l_args) = stockParser.parse_known_args(
+                    userInput.lower().split()
+                )
+            except SystemExit:
+                console.print(
+                    f"[red]The command selected doesn't exist. Available commands are : {self.commands}"
+                )
+                continue
+
+            ################
+            # Quit program #
+            ################
+            if stockParserArgs.cmd in ("help", "h"):
+                console.print(helpMessage)
+
+            ################
+            # Quit program #
+            ################
+            elif stockParserArgs.cmd in ("quit", "q"):
+                console.print(f"[red]Exiting {self.sectionName} section")
+                continueStockLoop = False
+
+            ################
+            # Clear screen #
+            ################
+            elif stockParserArgs.cmd == "cls":
+                os.system("cls||clear")
+
+            ################
+            # Load program #
+            ################
+            elif stockParserArgs.cmd in ("load"):
+                ##########################
+                # Create load parameters #
+                ##########################
+                loadParser = argparse.ArgumentParser(prog="load")
+                loadParser.add_argument("--ticker", "-t", type=str, required=True)
+                loadParser.add_argument(
+                    "--source",
+                    choices=[list(self.sourceClassMapping.keys())],
+                    default="av",
+                )
+
+                try:
+                    (loadParserArgs, largs) = loadParser.parse_known_args(
+                        userInput.split()
+                    )
+                except SystemExit:
+                    console.print("[red]Invalid arguments")
+                    continue
+
+                ###########################
+                # Load data for the stock #
+                ###########################
+
+                try:
+                    # Check if the source they have chosen is correct
+                    assert (
+                        loadParserArgs.source in self.sourceClassMapping.keys()
+                    ), Exception(
+                        f"Source {loadParserArgs.source} not defined. Valid values are: {list(self.sourceClassMapping.keys())}"
+                    )
+
+                    # Check if we have the correct class
+                    self.classToUse = self.sourceClassMapping[loadParserArgs.source]
+                    self.classInstance = self.sourceClassMapping[loadParserArgs.source](stockName=loadParserArgs.ticker)
+                except Exception as error:
+                    console.print(f"[red]{error}")
+
+            ################
+            # Plot Program #
+            ################
+            elif stockParserArgs.cmd in ("plotLine", "pl"):
+                if self.classInstance is not None:
+                    ##############################
+                    # Create plotLine parameters #
+                    ##############################
+                    viewParser = argparse.ArgumentParser(prog="plotLine")
+                    viewParser.add_argument(
+                        "--type",
+                        type=str,
+                        required=False,
+                        default="line",
+                        choices=["line", "ohlc"],
+                    )
+                    viewParser.add_argument(
+                        "--startDate",
+                        type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
+                        help="The starting date (format YYYY-MM-DD)",
+                        default=datetime.datetime.today()
+                        - datetime.timedelta(days=365),
+                    )
+                    viewParser.add_argument(
+                        "--endDate",
+                        type=lambda d: datetime.datetime.strptime(d, "%Y-%m-%d"),
+                        help="The ending date (format YYYY-MM-DD)",
+                        default=datetime.datetime.today(),
+                    )
+                    viewParser.add_argument(
+                        "--adjust",
+                        type=int,
+                        help="",
+                        default=1,
+                    )
+                    try:
+                        (viewParserArgs, largs) = viewParser.parse_known_args(
+                            userInput.split()
+                        )
+                    except SystemExit:
+                        console.print("[red]Invalid arguemnts")
+                        continue
+
+                    ###########################
+                    # Load data for the stock #
+                    ###########################
+                    try:
+                        df = self.classInstance.loadDaily(
+                            startDate=ciso8601.parse_datetime(
+                                str(viewParserArgs.startDate)
+                            ),
+                            endDate=ciso8601.parse_datetime(
+                                str(viewParserArgs.endDate)
+                            ),
+                        )
+                        self.classInstance.plotLine(
+                            df, plotGlobalEvents=True, adjust=viewParserArgs.adjust
+                        )
+                        plt.show()
+                    except Exception as err:
+                        console.print(f"[red]{err}")
+                else:
+                    console.print("[red]currency not loaded. Use load command")
+
+            ################
+            # Find program #
+            ################
+            elif stockParserArgs.cmd in ("find", "fi"):
+                #########################
+                # Create cmd parameters #
+                #########################
+                findParser = argparse.ArgumentParser(prog="find")
+                findParser.add_argument("--keyword", type=str, required=True)
+
+                try:
+                    (findParserArgs, largs) = findParser.parse_known_args(
+                        userInput.split()
+                    )
+                except SystemExit:
+                    console.print("[red]Invalid arguemnts")
+                    continue
+
+                ###########################
+                # Load data for the stock #
+                ###########################
+                console.print(f"Results for : {findParserArgs.keyword}")
+                searchResultsDF: pd.DataFrame = self.classToUse.find(findParserArgs.keyword)
+                rich_dataframe.prettify(searchResultsDF) # print the results
+
+            else:
+                console.print(f"[red]The command selected doesn't exist. Available commands are : {self.commands}")
+                continue
